@@ -62,6 +62,7 @@ export function calculateLoading(items, catalog) {
       return [{
         ...item,
         displayName: displayImplementName(model),
+        implementType: model.implementType,
         plant: model.plant,
         packUnit: model.packUnit,
         packLength: model.packLength,
@@ -138,6 +139,8 @@ export function calculateLoading(items, catalog) {
         capacity: first.model.packUnit,
         composition: allocation.parts.join(" · "),
         length: first.model.packLength,
+        cabin: cabinClass(first.model),
+        ropsType: first.model.ropsType,
       });
     }
   }
@@ -183,6 +186,7 @@ export function calculateLoading(items, catalog) {
         loadingQuantity: line.packUnit,
         capacity: line.packUnit,
         length: line.packLength,
+        implementType: line.implementType,
       });
     }
   }
