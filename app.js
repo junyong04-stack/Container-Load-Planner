@@ -9,7 +9,6 @@ import { calculateLoading } from "./loading.js";
 import { BUFFER_LENGTH, CONTAINER_LENGTH, optimizeContainers } from "./planner.js";
 import { buildOrderForm } from "./order-form.js";
 import { makeCatalogStore } from "./catalog-store.js";
-
 // Change this before sharing the link with anyone outside the team.
 const ADMIN_PASSWORD = "tym-clp-2026";
 
@@ -40,6 +39,7 @@ const state = {
   saving: false,
   exportingOrderForm: false,
   modelSearch: "",
+  layoutView: "3d",
   newModel: { plant: "Okcheon", tractorModel: "", ropsType: "REAR", transmissionType: "GEAR", tireType: "AGRI", packUnit: "1", packLength: "3", erpCode: "" },
   newImplement: { plant: "Not Specified", implementType: "", modelName: "", packUnit: "1", packLength: "1", erpCode: "" },
   adminState: { authenticated: false, isAdmin: sessionStorage.getItem("clp-admin") === "1" },
@@ -446,9 +446,14 @@ function render() {
         </article>
         <article class="visualCard card">
           <div class="visualTitle"><div><p class="eyebrow">CONTAINER MAP</p><h2>Optimized Container Layout</h2></div>
-            <div class="legend"><span><i class="legendRed"></i>Tractor</span><span><i class="legendBlue"></i>Implement</span><span><i class="legendOrange"></i>Tire Pallet</span><span><i class="legendYellow"></i>Buffer Space</span><span><i class="legendGray"></i>Remaining Space</span></div>
+            <div class="visualTools">
+              <div class="viewToggle" role="group" aria-label="Layout view"><button type="button" data-action="layout-view" data-view="3d" class="${state.layoutView === "3d" ? "on" : ""}">3D</button><button type="button" data-action="layout-view" data-view="2d" class="${state.layoutView === "2d" ? "on" : ""}">2D</button></div>
+              ${state.layoutView === "2d" ? `<div class="legend"><span><i class="legendRed"></i>Tractor</span><span><i class="legendBlue"></i>Implement</span><span><i class="legendOrange"></i>Tire Pallet</span><span><i class="legendYellow"></i>Buffer Space</span><span><i class="legendGray"></i>Remaining Space</span></div>` : ""}
+            </div>
           </div>
-          <div class="containerPlanList">${derived.containers.map(renderContainer).join("") || `<div class="planEmpty">Complete the Load List and select “Calculate Optimal Loading”.</div>`}</div>
+          ${state.layoutView === "3d"
+            ? `<div class="viewer3dSlot"></div>`
+            : `<div class="containerPlanList">${derived.containers.map(renderContainer).join("") || `<div class="planEmpty">Complete the Load List and select “Calculate Optimal Loading”.</div>`}</div>`}
           <div class="formulaRow">
             <div class="formula"><span aria-hidden="true">i</span>Compatible tractor options share packaging blocks. Tires share pallets only when their rule signature and packaging specification match. A 0.30m buffer separates tractors from implements and different implement models.</div>
             <div class="resultActions"><button type="button" class="secondaryButton" data-action="reset-all">Reset</button><button type="button" class="exportButton" data-action="export-order-form" ${!derived.lines.length || derived.pending || state.exportingOrderForm ? "disabled" : ""}>${state.exportingOrderForm ? "Creating…" : "Order Form"}</button></div>
@@ -460,7 +465,32 @@ function render() {
     ${renderCatalogModal(derived)}
   `;
 
+  mountViewer3D(derived.containers);
   return derived;
+}
+
+// The 3D viewer keeps one WebGL canvas alive across re-renders; it is re-attached to the fresh slot each time.
+// three.js is loaded on demand so the planner still works if the CDN or WebGL is unavailable.
+let viewer3d = null;
+let viewer3dLoad = null;
+function mountViewer3D(containers) {
+  const slot = root.querySelector(".viewer3dSlot");
+  if (!slot) return;
+  if (viewer3d) {
+    slot.appendChild(viewer3d.element);
+    viewer3d.update(containers);
+    return;
+  }
+  slot.innerHTML = `<div class="planEmpty">Loading 3D view…</div>`;
+  viewer3dLoad ??= import("./container-3d.js").then(({ createContainer3D }) => { viewer3d = createContainer3D(); });
+  viewer3dLoad.then(
+    () => { if (state.layoutView === "3d") rerender(); },
+    (error) => {
+      console.error("3D viewer unavailable", error);
+      const current = root.querySelector(".viewer3dSlot");
+      if (current) current.innerHTML = `<div class="planEmpty">3D view could not be loaded in this browser. Switch to 2D.</div>`;
+    },
+  );
 }
 
 let latestDerived = null;
@@ -493,6 +523,7 @@ root.addEventListener("click", (event) => {
     case "open-catalog": state.catalogOpen = true; break;
     case "close-catalog": state.catalogOpen = false; break;
     case "catalog-tab": state.catalogTab = target.dataset.tab; state.modelSearch = ""; break;
+    case "layout-view": state.layoutView = target.dataset.view; break;
     case "remove-catalog-item": removeCatalogItem(target.dataset.id); return;
     case "export-order-form": exportOrderForm(latestDerived); return;
   }
